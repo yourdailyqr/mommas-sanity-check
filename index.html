@@ -145,8 +145,7 @@ body {
 .nav-row {
   display:flex;
   align-items:center;
-  justify-content:center;
-  gap:16px;
+  justify-content:space-between;
   margin-bottom:6px;
 }
 
@@ -161,6 +160,8 @@ body {
   background:none; border:none;
   padding:4px 8px;
 }
+.nav-arrow:first-child { margin-left:-14px; }
+.nav-arrow:last-child { margin-right:-14px; }
 .nav-arrow:hover { opacity:0.8; }
 .nav-arrow.disabled { color:#666; cursor:default; pointer-events:none; }
 
@@ -168,7 +169,8 @@ body {
   font-family:'Bangers', cursive;
   font-size:26px;
   color:#fff;
-  min-width:120px;
+  flex:1;
+  text-align:center;
   text-shadow: 1px 1px 0 #000;
   letter-spacing:1px;
 }
@@ -413,18 +415,36 @@ setVh();
 
 /* =========================================================
    SCAN GATE LOGIC — Rolling 72-Hour Inactivity Timer
-   1. No stamp -> set stamp now, show content.
-   2. Stamp exists, < 72h since last view -> refresh stamp, show content.
-   3. Stamp exists, >= 72h since last view -> clear stamp, show gate,
-      block content. Re-scanning the QR code / retyping the URL reloads
-      the page with no stamp present, so rule 1 applies again.
+   1. Fresh session (empty sessionStorage, e.g. QR scan, typed URL,
+      new tab) -> ALWAYS show content immediately, no matter what
+      localStorage says. Mark session active, refresh stamp.
+   2. Existing session (tab already open/reloaded), stamp exists,
+      < 72h since last active view -> refresh stamp, show content.
+   3. Existing session, stamp exists, >= 72h since last active view
+      -> clear stamp, show gate, block content. Re-scanning the QR
+      code / retyping the URL opens a NEW session (sessionStorage
+      empty again), so rule 1 applies and the gate is bypassed.
 ========================================================= */
 const GATE_KEY = 'ydq_sanitycheck_last_view_ts';
+const SESSION_KEY = 'ydq_sanitycheck_session_active';
 const GATE_HOURS = 72;
 const GATE_MS = GATE_HOURS * 60 * 60 * 1000;
 
 function passesScanGate() {
   const now = Date.now();
+
+  // Rule 1: fresh session (empty sessionStorage) = fresh open / scan.
+  // This always bypasses the gate, regardless of any stale localStorage stamp.
+  let sessionActive = null;
+  try { sessionActive = sessionStorage.getItem(SESSION_KEY); } catch (e) { sessionActive = null; }
+
+  if (sessionActive === null) {
+    try { sessionStorage.setItem(SESSION_KEY, '1'); } catch (e) {}
+    try { localStorage.setItem(GATE_KEY, String(now)); } catch (e) {}
+    return true;
+  }
+
+  // Existing session (same tab, already active) -> apply rolling 72h check.
   let stamp = null;
   try { stamp = localStorage.getItem(GATE_KEY); } catch (e) { stamp = null; }
 
